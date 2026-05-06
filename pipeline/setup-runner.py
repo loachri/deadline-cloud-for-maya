@@ -209,28 +209,42 @@ def _install_maya_linux(version: str) -> Path:
         verify_checksum(installer_path, MAYA_CHECKSUMS[version].get("linux", ""))
 
         run(["chmod", "+x", str(installer_path)])
+        extract_dir = Path(f"/tmp/maya-{version}-extract")
         run(
             [
                 str(installer_path),
                 "--noexec",
+                "--keep",
+                "--nox11",
                 "--target",
-                f"/tmp/maya-{version}-extract",
+                str(extract_dir),
+                "--phase2",
             ]
         )
 
-        # Run the setup script with auto-accept
-        extract_dir = Path(f"/tmp/maya-{version}-extract")
-        run(
-            [
-                "./setup",
-                "--accept-eula=yes",
-                f"--prefix={maya_dir}",
-            ],
-            cwd=extract_dir,
+        # The .run extracts to a directory containing an RPM.
+        # Use rpm2cpio to extract it (same approach as BealineCondaRecipe-Maya).
+        maya_dir.mkdir(parents=True, exist_ok=True)
+        rpms = list(extract_dir.glob("*.rpm"))
+        if not rpms:
+            print(f"ERROR: No RPM found in {extract_dir}")
+            run(["ls", "-la", str(extract_dir)], check=False)
+            sys.exit(1)
+        rpm_path = rpms[0].resolve()
+        subprocess.run(
+            f"rpm2cpio {rpm_path} | cpio -idm",
+            shell=True,
+            check=True,
+            cwd=maya_dir,
         )
 
+        # MayaIO RPM extracts to usr/autodesk/mayaIO<version>/ inside cwd
+        mayaio_subdir = maya_dir / "usr" / "autodesk" / f"mayaIO{version}"
+        if not mayaio_subdir.exists():
+            # Try alternate naming
+            mayaio_subdir = maya_dir / "usr" / "autodesk" / f"maya{version}"
         # Verify installation
-        mayapy_exe = maya_dir / "bin" / "mayapy"
+        mayapy_exe = mayaio_subdir / "bin" / "mayapy"
         if mayapy_exe.exists():
             print(f"SUCCESS: mayapy found at {mayapy_exe}")
             maya_marker.touch()
@@ -484,7 +498,11 @@ def setup_linux(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
     # Install the submitter and deps into each Maya version
     for version in maya_versions:
         maya_dir = Path(f"/opt/Autodesk/mayaio/{version}")
-        mayapy_exe = maya_dir / "bin" / "mayapy"
+        # RPM extracts to usr/autodesk/mayaIO<version> inside maya_dir
+        mayaio_subdir = maya_dir / "usr" / "autodesk" / f"mayaIO{version}"
+        if not mayaio_subdir.exists():
+            mayaio_subdir = maya_dir / "usr" / "autodesk" / f"maya{version}"
+        mayapy_exe = mayaio_subdir / "bin" / "mayapy"
 
         print(f"Installing submitter for Maya {version}...")
         run(["hatch", "run", "install", "--maya-version", version])
