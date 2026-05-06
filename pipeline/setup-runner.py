@@ -218,14 +218,13 @@ def _install_maya_linux(version: str) -> Path:
                 "--nox11",
                 "--target",
                 str(extract_dir),
-                "--phase2",
             ]
         )
 
         # The .run extracts to a directory containing an RPM.
         # Use rpm2cpio to extract it (same approach as BealineCondaRecipe-Maya).
         maya_dir.mkdir(parents=True, exist_ok=True)
-        rpms = list(extract_dir.glob("*.rpm"))
+        rpms = list(extract_dir.rglob("*.rpm"))
         if not rpms:
             print(f"ERROR: No RPM found in {extract_dir}")
             run(["ls", "-la", str(extract_dir)], check=False)
@@ -561,8 +560,17 @@ def setup_linux(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
         # Install the package itself so mayapy can import it
         run([str(mayapy_exe), "-m", "pip", "install", "."])
 
-        # Symlink mayapy to PATH so hatch integ-ci:test can find it
-        run(["ln", "-sf", str(mayapy_exe), "/usr/local/bin/mayapy"])
+        # Symlink mayapy to PATH so hatch integ-ci:test can find it.
+        # Create a wrapper that sets MAYA_LOCATION so mayapy finds its Python stdlib.
+        mayapy_dir = mayapy_exe.parent.parent  # e.g. /opt/.../usr/autodesk/mayaIO2025
+        wrapper = Path("/usr/local/bin/mayapy")
+        wrapper.write_text(
+            f"#!/bin/sh\n"
+            f"export MAYA_LOCATION=\"{mayapy_dir}\"\n"
+            f"export LD_LIBRARY_PATH=\"{mayapy_dir}/lib:${{LD_LIBRARY_PATH:-}}\"\n"
+            f"exec \"{mayapy_exe}\" \"$@\"\n"
+        )
+        run(["chmod", "+x", str(wrapper)])
 
     # Install requested renderers (always per-Maya-version, except Redshift which
     # is shared across versions).
@@ -845,13 +853,21 @@ def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
     for version in maya_versions:
         _install_maya_macos(version)
 
-    # Symlink mayapy to PATH so hatch integ-ci:test can find it
-    # Use the last installed version as the default mayapy
+    # Symlink mayapy to PATH so hatch integ-ci:test can find it.
+    # Maya's Python needs MAYA_LOCATION set to find its standard library.
+    # Create a wrapper script that sets the environment before invoking mayapy.
     for version in maya_versions:
         maya_app = Path(f"/Applications/Autodesk/maya{version}/Maya.app")
-        mayapy_exe = maya_app / "Contents" / "bin" / "mayapy"
-        if mayapy_exe.exists():
-            run(["sudo", "ln", "-sf", str(mayapy_exe), "/usr/local/bin/mayapy"])
+        mayapy_real = maya_app / "Contents" / "bin" / "mayapy"
+        if mayapy_real.exists():
+            wrapper = Path("/usr/local/bin/mayapy")
+            wrapper.write_text(
+                f"#!/bin/sh\n"
+                f"export MAYA_LOCATION=\"{maya_app}/Contents\"\n"
+                f"export DYLD_LIBRARY_PATH=\"{maya_app}/Contents/MacOS\"\n"
+                f"exec \"{mayapy_real}\" \"$@\"\n"
+            )
+            run(["chmod", "+x", str(wrapper)])
 
     for version in maya_versions:
         maya_app = Path(f"/Applications/Autodesk/maya{version}/Maya.app")
