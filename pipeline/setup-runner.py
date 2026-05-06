@@ -551,6 +551,19 @@ def _install_maya_windows(version: str) -> Path:
         ]
     )
 
+    # The zip contains a self-extracting exe (_001_002.exe) + 7z payload (_002_002.7z).
+    # Run the exe to extract the actual installer containing Setup.exe.
+    sfx_exe = next(setup_dir.rglob("*_001_002.exe"), None)
+    if sfx_exe:
+        print(f"Running self-extracting installer: {sfx_exe}")
+        run(
+            [
+                "powershell",
+                "-Command",
+                f'Start-Process "{sfx_exe}" -ArgumentList "-o{setup_dir}\\extracted", "-y" -Wait',
+            ]
+        )
+
     # Autodesk zips extract to either the zip's directory or to a nested folder
     # containing Setup.exe. Find it rather than hard-coding a layout.
     setup_exe = next(setup_dir.rglob("Setup.exe"), None)
@@ -711,12 +724,38 @@ def _install_maya_macos(version: str) -> Path:
             ]
         )
         try:
-            pkg = next(mount_point.glob("*.pkg"), None)
-            if pkg is None:
-                print(f"ERROR: No .pkg found in Maya DMG at {mount_point}")
-                run(["ls", "-la", str(mount_point)], check=False)
-                sys.exit(1)
-            run(["sudo", "installer", "-pkg", str(pkg), "-target", "/"])
+            # Maya macOS DMGs contain "Install Maya XXXX.app" which uses Autodesk's
+            # ODIS installer. The actual .pkg files are inside the app bundle at
+            # Contents/Helper/Packages/Maya/. We install the core pkg directly.
+            app = next(mount_point.glob("Install Maya*.app"), None)
+            if app is None:
+                # Fallback: look for a top-level .pkg
+                pkg = next(mount_point.glob("*.pkg"), None)
+                if pkg is None:
+                    print(f"ERROR: No Install Maya*.app or .pkg found in DMG at {mount_point}")
+                    run(["ls", "-laR", str(mount_point)], check=False)
+                    sys.exit(1)
+                run(["sudo", "installer", "-pkg", str(pkg), "-target", "/"])
+            else:
+                packages_dir = app / "Contents" / "Helper" / "Packages" / "Maya"
+                if not packages_dir.exists():
+                    print(f"ERROR: Packages directory not found at {packages_dir}")
+                    run(["find", str(app), "-name", "*.pkg"], check=False)
+                    sys.exit(1)
+                # Install Maya core package (required) and other key packages
+                core_pkg = next(packages_dir.glob("Maya_core*.pkg"), None)
+                if core_pkg is None:
+                    print(f"ERROR: Maya_core*.pkg not found in {packages_dir}")
+                    run(["ls", "-la", str(packages_dir)], check=False)
+                    sys.exit(1)
+                print(f"Installing {core_pkg.name}...")
+                run(["sudo", "installer", "-pkg", str(core_pkg), "-target", "/"])
+                # Install additional packages needed for rendering
+                for pkg in sorted(packages_dir.glob("*.pkg")):
+                    if pkg == core_pkg:
+                        continue
+                    print(f"Installing {pkg.name}...")
+                    run(["sudo", "installer", "-pkg", str(pkg), "-target", "/"], check=False)
         finally:
             run(["hdiutil", "detach", str(mount_point)], check=False)
 
