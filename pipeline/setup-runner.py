@@ -860,14 +860,16 @@ def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
         maya_app = Path(f"/Applications/Autodesk/maya{version}/Maya.app")
         mayapy_real = maya_app / "Contents" / "bin" / "mayapy"
         if mayapy_real.exists():
-            wrapper = Path("/usr/local/bin/mayapy")
-            wrapper.write_text(
+            wrapper_content = (
                 f"#!/bin/sh\n"
                 f"export MAYA_LOCATION=\"{maya_app}/Contents\"\n"
                 f"export DYLD_LIBRARY_PATH=\"{maya_app}/Contents/MacOS\"\n"
                 f"exec \"{mayapy_real}\" \"$@\"\n"
             )
-            run(["chmod", "+x", str(wrapper)])
+            wrapper = Path("/tmp/mayapy_wrapper.sh")
+            wrapper.write_text(wrapper_content)
+            run(["sudo", "cp", str(wrapper), "/usr/local/bin/mayapy"])
+            run(["sudo", "chmod", "+x", "/usr/local/bin/mayapy"])
 
     for version in maya_versions:
         maya_app = Path(f"/Applications/Autodesk/maya{version}/Maya.app")
