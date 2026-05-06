@@ -458,6 +458,23 @@ def _install_redshift_linux() -> None:
         lock_file.unlink(missing_ok=True)
 
 
+def _clean_stale_locks(maya_versions: Sequence[str], plat: str) -> None:
+    """Remove stale lock files from previous failed runs on reserved capacity fleets."""
+    for version in maya_versions:
+        lock_file = Path(f"/tmp/maya-{version}.lock")
+        if plat == "linux":
+            marker = Path(f"/opt/Autodesk/mayaio/{version}/.installed")
+        elif plat == "windows":
+            marker = Path(f"C:/Program Files/Autodesk/Maya{version}/.installed")
+        elif plat == "macos":
+            marker = Path(f"~/Library/Application Support/.maya-{version}-installed").expanduser()
+        else:
+            continue
+        if lock_file.exists() and not marker.exists():
+            print(f"Removing stale lock file for Maya {version}")
+            lock_file.unlink()
+
+
 def setup_linux(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
     pkg_mgr = (
         "dnf"
@@ -497,6 +514,9 @@ def setup_linux(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
         subprocess.Popen(["Xvfb", ":99", "-screen", "0", "1024x768x24"])
         run(["sleep", "2"])
         print("\nXvfb started. DISPLAY=:99")
+
+    # Clean stale lock files from previous failed runs (reserved capacity persists)
+    _clean_stale_locks(maya_versions, "linux")
 
     # Install Maya first — MtoA/V-Ray/Redshift plug into an existing Maya install.
     for version in maya_versions:
@@ -540,6 +560,9 @@ def setup_linux(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
 
         # Install the package itself so mayapy can import it
         run([str(mayapy_exe), "-m", "pip", "install", "."])
+
+        # Symlink mayapy to PATH so hatch integ-ci:test can find it
+        run(["ln", "-sf", str(mayapy_exe), "/usr/local/bin/mayapy"])
 
     # Install requested renderers (always per-Maya-version, except Redshift which
     # is shared across versions).
@@ -674,6 +697,7 @@ def _register_pywin32() -> None:
 
 
 def setup_windows(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
+    _clean_stale_locks(maya_versions, "windows")
     for version in maya_versions:
         _install_maya_windows(version)
 
@@ -817,8 +841,17 @@ def _install_maya_macos(version: str) -> Path:
 
 
 def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
+    _clean_stale_locks(maya_versions, "macos")
     for version in maya_versions:
         _install_maya_macos(version)
+
+    # Symlink mayapy to PATH so hatch integ-ci:test can find it
+    # Use the last installed version as the default mayapy
+    for version in maya_versions:
+        maya_app = Path(f"/Applications/Autodesk/maya{version}/Maya.app")
+        mayapy_exe = maya_app / "Contents" / "bin" / "mayapy"
+        if mayapy_exe.exists():
+            run(["sudo", "ln", "-sf", str(mayapy_exe), "/usr/local/bin/mayapy"])
 
     for version in maya_versions:
         maya_app = Path(f"/Applications/Autodesk/maya{version}/Maya.app")
