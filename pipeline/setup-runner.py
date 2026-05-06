@@ -128,6 +128,45 @@ def run(
     return result
 
 
+# TODO: Increase timeout back to 600+ once installs are proven stable.
+DEFAULT_CMD_TIMEOUT = 180  # 3 minutes
+
+
+def run_with_timeout(
+    cmd: str | Sequence[str],
+    timeout: int = DEFAULT_CMD_TIMEOUT,
+    cwd: str | os.PathLike[str] | None = None,
+    label: str = "",
+) -> subprocess.CompletedProcess[bytes]:
+    """Run a command with a timeout. Prints stdout/stderr on failure for diagnostics."""
+    desc = label or (cmd if isinstance(cmd, str) else shlex.join(cmd))
+    print(f"Running (timeout={timeout}s): {desc}")
+    try:
+        result = subprocess.run(
+            cmd,
+            check=False,
+            cwd=cwd,
+            timeout=timeout,
+            capture_output=True,
+        )
+        # Always print output for visibility
+        if result.stdout:
+            print(result.stdout.decode("utf-8", errors="replace"))
+        if result.stderr:
+            print(result.stderr.decode("utf-8", errors="replace"))
+        if result.returncode != 0:
+            print(f"ERROR: Command failed with exit code {result.returncode}")
+            sys.exit(result.returncode)
+        return result
+    except subprocess.TimeoutExpired as e:
+        print(f"TIMEOUT: Command did not complete within {timeout}s: {desc}")
+        if e.stdout:
+            print(f"stdout so far:\n{e.stdout.decode('utf-8', errors='replace')[-2000:]}")
+        if e.stderr:
+            print(f"stderr so far:\n{e.stderr.decode('utf-8', errors='replace')[-2000:]}")
+        sys.exit(1)
+
+
 def download_from_s3(s3_path: str, local_path: str | os.PathLike[str]) -> None:
     bucket = os.environ.get("INSTALLER_BUCKET")
     if not bucket:
@@ -540,25 +579,36 @@ def setup_linux(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
                 sys.exit(1)
 
         print(f"Installing submitter for Maya {version}...")
-        run(["hatch", "run", "install", "--maya-version", version])
+        run_with_timeout(
+            ["hatch", "run", "install", "--maya-version", version],
+            timeout=DEFAULT_CMD_TIMEOUT,
+            label=f"hatch install submitter (Maya {version})",
+        )
 
         # Install integ test dependencies into Maya's Python
         print(f"Installing integ test dependencies for Maya {version}...")
-        run(
+        run_with_timeout(
             [
                 str(mayapy_exe),
                 "-m",
                 "pip",
                 "install",
+                "-v",
                 "-r",
                 "requirements-integ-testing.txt",
                 "-r",
                 "requirements-testing.txt",
-            ]
+            ],
+            timeout=DEFAULT_CMD_TIMEOUT,
+            label=f"pip install requirements (Maya {version})",
         )
 
         # Install the package itself so mayapy can import it
-        run([str(mayapy_exe), "-m", "pip", "install", "."])
+        run_with_timeout(
+            [str(mayapy_exe), "-m", "pip", "install", "-v", "."],
+            timeout=DEFAULT_CMD_TIMEOUT,
+            label=f"pip install project (Maya {version})",
+        )
 
         # Symlink mayapy to PATH so hatch integ-ci:test can find it.
         # Create a wrapper that sets MAYA_LOCATION so mayapy finds its Python stdlib.
@@ -876,23 +926,34 @@ def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
         mayapy_exe = maya_app / "Contents" / "bin" / "mayapy"
 
         print(f"Installing submitter for Maya {version}...")
-        run(["hatch", "run", "install", "--maya-version", version])
+        run_with_timeout(
+            ["hatch", "run", "install", "--maya-version", version],
+            timeout=DEFAULT_CMD_TIMEOUT,
+            label=f"hatch install submitter (Maya {version})",
+        )
 
         print(f"Installing integ test dependencies for Maya {version}...")
-        run(
+        run_with_timeout(
             [
                 str(mayapy_exe),
                 "-m",
                 "pip",
                 "install",
+                "-v",
                 "-r",
                 "requirements-integ-testing.txt",
                 "-r",
                 "requirements-testing.txt",
-            ]
+            ],
+            timeout=DEFAULT_CMD_TIMEOUT,
+            label=f"pip install requirements (Maya {version})",
         )
 
-        run([str(mayapy_exe), "-m", "pip", "install", "."])
+        run_with_timeout(
+            [str(mayapy_exe), "-m", "pip", "install", "-v", "."],
+            timeout=DEFAULT_CMD_TIMEOUT,
+            label=f"pip install project (Maya {version})",
+        )
 
     if renderers:
         print(
