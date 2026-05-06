@@ -137,10 +137,14 @@ def run_with_timeout(
     timeout: int = DEFAULT_CMD_TIMEOUT,
     cwd: str | os.PathLike[str] | None = None,
     label: str = "",
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
     """Run a command with a timeout. Prints stdout/stderr on failure for diagnostics."""
     desc = label or (cmd if isinstance(cmd, str) else shlex.join(cmd))
     print(f"Running (timeout={timeout}s): {desc}")
+    run_env = None
+    if env:
+        run_env = {**os.environ, **env}
     try:
         result = subprocess.run(
             cmd,
@@ -148,6 +152,7 @@ def run_with_timeout(
             cwd=cwd,
             timeout=timeout,
             capture_output=True,
+            env=run_env,
         )
         # Always print output for visibility
         if result.stdout:
@@ -924,6 +929,10 @@ def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
     for version in maya_versions:
         maya_app = Path(f"/Applications/Autodesk/maya{version}/Maya.app")
         mayapy_exe = maya_app / "Contents" / "bin" / "mayapy"
+        maya_env = {
+            "MAYA_LOCATION": f"{maya_app}/Contents",
+            "DYLD_LIBRARY_PATH": f"{maya_app}/Contents/MacOS",
+        }
 
         print(f"Installing submitter for Maya {version}...")
         run_with_timeout(
@@ -947,12 +956,14 @@ def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
             ],
             timeout=DEFAULT_CMD_TIMEOUT,
             label=f"pip install requirements (Maya {version})",
+            env=maya_env,
         )
 
         run_with_timeout(
             [str(mayapy_exe), "-m", "pip", "install", "-v", "."],
             timeout=DEFAULT_CMD_TIMEOUT,
             label=f"pip install project (Maya {version})",
+            env=maya_env,
         )
 
     if renderers:
