@@ -552,15 +552,19 @@ def _install_maya_windows(version: str) -> Path:
     )
 
     # The zip contains a self-extracting exe (_001_002.exe) + 7z payload (_002_002.7z).
-    # Run the exe to extract the actual installer containing Setup.exe.
+    # Run the exe with /extract to silently extract the installer files.
+    # If no self-extractor is found, Setup.exe may already be present (e.g. Maya 2024 zips).
     sfx_exe = next(setup_dir.rglob("*_001_002.exe"), None)
     if sfx_exe:
         print(f"Running self-extracting installer: {sfx_exe}")
+        extract_dest = setup_dir / "extracted"
+        extract_dest.mkdir(parents=True, exist_ok=True)
+        # Autodesk's self-extracting exe supports /extract <path> for silent extraction
         run(
             [
                 "powershell",
                 "-Command",
-                f'Start-Process "{sfx_exe}" -ArgumentList "-o{setup_dir}\\extracted", "-y" -Wait',
+                f'Start-Process "{sfx_exe}" -ArgumentList "/extract", "{extract_dest}" -Wait',
             ]
         )
 
@@ -577,7 +581,7 @@ def _install_maya_windows(version: str) -> Path:
         [
             "powershell",
             "-Command",
-            f'Start-Process "{setup_exe}" -ArgumentList "--silent" -Wait',
+            f'Start-Process "{setup_exe}" -ArgumentList "-q" -Wait',
         ],
         capture_output=True,
         text=True,
