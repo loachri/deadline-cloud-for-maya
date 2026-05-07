@@ -629,13 +629,32 @@ def setup_linux(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
         )
 
         # Symlink mayapy to PATH so hatch integ-ci:test can find it.
-        # Create a wrapper that sets MAYA_LOCATION so mayapy finds its Python stdlib.
+        # Create a wrapper that sets MAYA_LOCATION and renderer plugin paths.
         mayapy_dir = mayapy_exe.parent.parent  # e.g. /opt/.../usr/autodesk/mayaIO2025
+
+        # Renderer paths
+        mtoa_dir = f"/opt/solidangle/mtoa/{version}"
+        vray_dir = f"/usr/ChaosGroup/V-Ray/Maya{version}-x64"
+        redshift_dir = "/usr/redshift"
+
+        module_paths = ":".join([
+            mtoa_dir,  # contains mtoa.mod
+            f"{vray_dir}/maya_root/modules",  # contains VRayForMaya.module
+        ])
+        plugin_paths = f"{redshift_dir}/redshift4maya/{version}"
+        script_paths = f"{redshift_dir}/redshift4maya/common/scripts"
+        render_desc_paths = f"{redshift_dir}/redshift4maya/common/rendererDesc"
+
         wrapper = Path("/usr/local/bin/mayapy")
         wrapper.write_text(
             f"#!/bin/sh\n"
             f"export MAYA_LOCATION=\"{mayapy_dir}\"\n"
             f"export LD_LIBRARY_PATH=\"{mayapy_dir}/lib:${{LD_LIBRARY_PATH:-}}\"\n"
+            f"export MAYA_MODULE_PATH=\"{module_paths}:${{MAYA_MODULE_PATH:-}}\"\n"
+            f"export MAYA_PLUG_IN_PATH=\"{plugin_paths}:${{MAYA_PLUG_IN_PATH:-}}\"\n"
+            f"export MAYA_SCRIPT_PATH=\"{script_paths}:${{MAYA_SCRIPT_PATH:-}}\"\n"
+            f"export MAYA_RENDER_DESC_PATH=\"{render_desc_paths}:${{MAYA_RENDER_DESC_PATH:-}}\"\n"
+            f"export REDSHIFT_COREDATAPATH=\"{redshift_dir}\"\n"
             f"exec \"{mayapy_exe}\" \"$@\"\n"
         )
         run(["chmod", "+x", str(wrapper)])
