@@ -560,6 +560,12 @@ def setup_linux(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
             "fontconfig",
             "xorg-x11-server-Xvfb",
             "libva",
+            "libvdpau",
+            "pciutils-libs",
+            "libglvnd-opengl",
+            "libglvnd-egl",
+            "alsa-lib",
+            "nss",
         ]
     )
 
