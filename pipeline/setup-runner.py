@@ -940,25 +940,22 @@ def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
     for version in maya_versions:
         _install_maya_macos(version)
 
-    # Symlink mayapy to PATH so hatch integ-ci:test can find it.
-    # Maya's Python needs MAYA_LOCATION set to find its standard library.
-    # Create a wrapper script that sets the environment before invoking mayapy.
-    for version in maya_versions:
-        maya_app = Path(f"/Applications/Autodesk/maya{version}/Maya.app")
-        mayapy_real = maya_app / "Contents" / "bin" / "mayapy"
-        if mayapy_real.exists():
-            deps_path = str(Path.home() / f"maya-deps/{version}/site-packages")
-            wrapper_content = (
-                f"#!/bin/sh\n"
-                f"export MAYA_LOCATION=\"{maya_app}/Contents\"\n"
-                f"export DYLD_LIBRARY_PATH=\"{maya_app}/Contents/MacOS\"\n"
-                f"export PYTHONPATH=\"{deps_path}:${{PYTHONPATH:-}}\"\n"
-                f"exec \"{mayapy_real}\" \"$@\"\n"
-            )
-            wrapper = Path("/tmp/mayapy_wrapper.sh")
-            wrapper.write_text(wrapper_content)
-            run(["sudo", "cp", str(wrapper), "/usr/local/bin/mayapy"])
-            run(["sudo", "chmod", "+x", "/usr/local/bin/mayapy"])
+    # Create a single version-aware wrapper that uses MAYA_VERSION env var
+    # (set by hatch matrix) to pick the right Maya binary
+    versions_str = " ".join(maya_versions)
+    wrapper_content = (
+        f"#!/bin/sh\n"
+        f"VER=\"${{MAYA_VERSION:-{maya_versions[0]}}}\"\n"
+        f"MAYA_APP=\"/Applications/Autodesk/maya$VER/Maya.app\"\n"
+        f"export MAYA_LOCATION=\"$MAYA_APP/Contents\"\n"
+        f"export DYLD_LIBRARY_PATH=\"$MAYA_APP/Contents/MacOS\"\n"
+        f"export PYTHONPATH=\"$HOME/maya-deps/$VER/site-packages:${{PYTHONPATH:-}}\"\n"
+        f"exec \"$MAYA_APP/Contents/bin/mayapy\" \"$@\"\n"
+    )
+    wrapper = Path("/tmp/mayapy_wrapper.sh")
+    wrapper.write_text(wrapper_content)
+    run(["sudo", "cp", str(wrapper), "/usr/local/bin/mayapy"])
+    run(["sudo", "chmod", "+x", "/usr/local/bin/mayapy"])
 
     for version in maya_versions:
         maya_app = Path(f"/Applications/Autodesk/maya{version}/Maya.app")
