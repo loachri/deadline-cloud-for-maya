@@ -973,29 +973,45 @@ def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
             label=f"hatch install submitter (Maya {version})",
         )
 
+        # Maya's bundled Python may lack SSL, use system pip with --target
+        maya_site_packages = maya_app / "Contents" / "Frameworks" / "Python.framework" / "Versions" / "Current" / "lib" / f"python{MAYA_VERSION_CONFIG[version]['python']}" / "site-packages"
+        if not maya_site_packages.exists():
+            # Fallback: find site-packages
+            result = subprocess.run(
+                ["find", str(maya_app), "-type", "d", "-name", "site-packages"],
+                capture_output=True, text=True, check=False,
+            )
+            if result.stdout.strip():
+                maya_site_packages = Path(result.stdout.strip().split("\n")[0])
+            else:
+                maya_site_packages = maya_app / "Contents" / "lib" / f"python{MAYA_VERSION_CONFIG[version]['python']}" / "site-packages"
+        maya_site_packages.mkdir(parents=True, exist_ok=True)
+        python_version = MAYA_VERSION_CONFIG[version]["python"]
+
         print(f"Installing integ test dependencies for Maya {version}...")
         run_with_timeout(
             [
-                str(mayapy_exe),
-                "-m",
-                "pip",
-                "install",
-                "-v",
-                "-r",
-                "requirements-integ-testing.txt",
-                "-r",
-                "requirements-testing.txt",
+                "pip", "install",
+                "--target", str(maya_site_packages),
+                "--python-version", python_version,
+                "--only-binary=:all:",
+                "-r", "requirements-integ-testing.txt",
+                "-r", "requirements-testing.txt",
             ],
             timeout=DEFAULT_CMD_TIMEOUT,
             label=f"pip install requirements (Maya {version})",
-            env=maya_env,
         )
 
         run_with_timeout(
-            [str(mayapy_exe), "-m", "pip", "install", "-v", "."],
+            [
+                "pip", "install",
+                "--target", str(maya_site_packages),
+                "--python-version", python_version,
+                "--only-binary=:all:",
+                ".",
+            ],
             timeout=DEFAULT_CMD_TIMEOUT,
             label=f"pip install project (Maya {version})",
-            env=maya_env,
         )
 
     if renderers:
