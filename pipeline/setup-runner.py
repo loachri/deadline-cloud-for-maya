@@ -947,10 +947,12 @@ def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
         maya_app = Path(f"/Applications/Autodesk/maya{version}/Maya.app")
         mayapy_real = maya_app / "Contents" / "bin" / "mayapy"
         if mayapy_real.exists():
+            deps_path = f"/opt/maya-deps/{version}/site-packages"
             wrapper_content = (
                 f"#!/bin/sh\n"
                 f"export MAYA_LOCATION=\"{maya_app}/Contents\"\n"
                 f"export DYLD_LIBRARY_PATH=\"{maya_app}/Contents/MacOS\"\n"
+                f"export PYTHONPATH=\"{deps_path}:${{PYTHONPATH:-}}\"\n"
                 f"exec \"{mayapy_real}\" \"$@\"\n"
             )
             wrapper = Path("/tmp/mayapy_wrapper.sh")
@@ -974,17 +976,8 @@ def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
         )
 
         # Maya's bundled Python may lack SSL, use system pip with --target
-        maya_site_packages = maya_app / "Contents" / "Frameworks" / "Python.framework" / "Versions" / "Current" / "lib" / f"python{MAYA_VERSION_CONFIG[version]['python']}" / "site-packages"
-        if not maya_site_packages.exists():
-            # Fallback: find site-packages
-            result = subprocess.run(
-                ["find", str(maya_app), "-type", "d", "-name", "site-packages"],
-                capture_output=True, text=True, check=False,
-            )
-            if result.stdout.strip():
-                maya_site_packages = Path(result.stdout.strip().split("\n")[0])
-            else:
-                maya_site_packages = maya_app / "Contents" / "lib" / f"python{MAYA_VERSION_CONFIG[version]['python']}" / "site-packages"
+        # Install to a writable location since Maya's site-packages is owned by root
+        maya_site_packages = Path(f"/opt/maya-deps/{version}/site-packages")
         maya_site_packages.mkdir(parents=True, exist_ok=True)
         python_version = MAYA_VERSION_CONFIG[version]["python"]
 
