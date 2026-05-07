@@ -1000,10 +1000,9 @@ def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
 
     if renderers:
         print(
-            "ERROR: macOS renderer installers (mtoa/vray/redshift) are not yet available in S3. "
-            "Remove --renderers or run only the native Maya renderer on macOS."
+            "WARNING: Skipping renderer installation on macOS. "
+            "Deadline Cloud does not support macOS for SMF rendering."
         )
-        sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
