@@ -934,12 +934,11 @@ def setup_windows(maya_versions: Sequence[str], renderers: Sequence[str]) -> Non
 
     _register_pywin32()
 
-    # Create mayapy.cmd in a directory already on PATH so tests can find it
-    # Machine-level PATH changes don't take effect in the same CodeBuild session
-    mayapy_path = Path(f"C:/Program Files/Autodesk/Maya{maya_versions[-1]}/bin/mayapy.exe")
-    wrapper_dir = Path("C:/Windows")  # Always on PATH
-    wrapper = wrapper_dir / "mayapy.cmd"
-    wrapper.write_text(f'@"{mayapy_path}" %*\n')
+    # Copy mayapy.exe to a PATH directory so tests can find it
+    # .CMD wrappers don't work with subprocess.Popen (adaptor uses it)
+    mayapy_src = Path(f"C:/Program Files/Autodesk/Maya{maya_versions[-1]}/bin/mayapy.exe")
+    if mayapy_src.exists():
+        run(["powershell", "-Command", f'Copy-Item "{mayapy_src}" "C:\\Windows\\mayapy.exe" -Force'])
 
 
 # ---------------------------------------------------------------------------
