@@ -253,13 +253,23 @@ def _install_maya_linux(version: str) -> Path:
         verify_checksum(installer_path, MAYA_CHECKSUMS[version].get("linux", ""))
 
         run(["chmod", "+x", str(installer_path)])
-        extract_dir = Path(f"/tmp/maya-{version}-extract")
-        extract_dir.mkdir(parents=True, exist_ok=True)
-        # Pipe 'yes' to accept the EULA, use --target to control extraction location
+        # Use a directory outside /tmp because the installer's cleanup script
+        # runs rm -rf /tmp/* which deletes the extract directory if it's in /tmp
+        extract_dir = Path(f"/opt/maya-{version}-extract")
+        if extract_dir.exists():
+            run(["rm", "-rf", str(extract_dir)], check=False)
+        # --phase2 skips the EULA prompt (reads from /dev/tty, can't be piped)
         print("Extracting installer (this may take a moment)...")
         result = subprocess.run(
-            f"yes | {installer_path} --keep --nox11 --target {extract_dir}",
-            shell=True,
+            [
+                str(installer_path),
+                "--noexec",
+                "--keep",
+                "--nox11",
+                "--target",
+                str(extract_dir),
+                "--phase2",
+            ],
             check=False,
         )
         print(f"Installer exit code: {result.returncode}")
