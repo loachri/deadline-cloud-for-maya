@@ -763,6 +763,78 @@ def _install_maya_windows(version: str) -> Path:
     return maya_dir
 
 
+def _install_vray_windows(version: str) -> None:
+    """Install V-Ray for Maya on Windows."""
+    # V-Ray versions mapped to S3 keys for Windows
+    vray_win_config = {
+        "2025": "maya-vray/70002/vray_adv_70002_maya2025_x64.exe",
+        "2026": "maya-vray/71002/vray_adv_71002_maya2026_x64.exe",
+    }
+    if version not in vray_win_config:
+        print(f"WARNING: No Windows V-Ray config for Maya {version}, skipping")
+        return
+    vray_dir = Path(f"C:/Program Files/Chaos Group/V-Ray/Maya {version}")
+    if vray_dir.exists():
+        print(f"V-Ray for Maya {version} already installed")
+        return
+    s3_key = vray_win_config[version]
+    installer_path = Path(f"C:/temp/vray_{version}.exe")
+    installer_path.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Installing V-Ray for Maya {version}...")
+    download_from_s3(s3_key, installer_path)
+    run(["chmod", "+x", str(installer_path)], check=False)
+    # Chaos installer: -gui=0 -auto -quiet=1
+    result = subprocess.run(
+        [str(installer_path), "-gui=0", "-auto", "-quiet=1"],
+        check=False,
+    )
+    print(f"V-Ray install exit code: {result.returncode}")
+    installer_path.unlink(missing_ok=True)
+
+
+def _install_mtoa_windows(version: str) -> None:
+    """Install MtoA (Arnold) for Maya on Windows."""
+    mtoa_win_config = {
+        "2025": "mtoa/5.5/MtoA-5.5.4.2-windows-2025.msi",
+        "2026": "mtoa/5.5/MtoA-5.5.4.2-windows-2026.msi",
+    }
+    if version not in mtoa_win_config:
+        print(f"WARNING: No Windows MtoA config for Maya {version}, skipping")
+        return
+    mtoa_dir = Path(f"C:/solidangle/mtoadeploy/{version}")
+    if mtoa_dir.exists():
+        print(f"MtoA for Maya {version} already installed")
+        return
+    s3_key = mtoa_win_config[version]
+    installer_path = Path(f"C:/temp/mtoa_{version}.msi")
+    installer_path.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Installing MtoA for Maya {version}...")
+    download_from_s3(s3_key, installer_path)
+    # MSI silent install
+    run(["msiexec", "/i", str(installer_path), "/quiet", "/norestart"])
+    installer_path.unlink(missing_ok=True)
+
+
+def _install_redshift_windows() -> None:
+    """Install Redshift on Windows."""
+    redshift_dir = Path("C:/ProgramData/Redshift")
+    if redshift_dir.exists():
+        print("Redshift already installed")
+        return
+    s3_key = "redshift/2026/redshift_2026.6.0_2497872080_win_x64.exe"
+    installer_path = Path("C:/temp/redshift_install.exe")
+    installer_path.parent.mkdir(parents=True, exist_ok=True)
+    print("Installing Redshift...")
+    download_from_s3(s3_key, installer_path)
+    # Redshift Windows installer - try silent flags
+    result = subprocess.run(
+        [str(installer_path), "/S", "/D=C:\\ProgramData\\Redshift"],
+        check=False,
+    )
+    print(f"Redshift install exit code: {result.returncode}")
+    installer_path.unlink(missing_ok=True)
+
+
 def _register_pywin32() -> None:
     """Register pywin32 DLLs so child processes (mayapy) can load win32file.
 
@@ -833,12 +905,15 @@ def setup_windows(maya_versions: Sequence[str], renderers: Sequence[str]) -> Non
 
     # Renderer installers for Windows are not yet in S3. Surface a clear message
     # rather than silently skipping so CI doesn't falsely pass renderer tests.
-    if renderers:
-        print(
-            "ERROR: Windows renderer installers (mtoa/vray/redshift) are not yet available in S3. "
-            "Remove --renderers or run only the native Maya renderer on Windows."
-        )
-        sys.exit(1)
+    # Install renderers on Windows
+    if "vray" in renderers:
+        for version in maya_versions:
+            _install_vray_windows(version)
+    if "mtoa" in renderers:
+        for version in maya_versions:
+            _install_mtoa_windows(version)
+    if "redshift" in renderers:
+        _install_redshift_windows()
 
     _register_pywin32()
 
