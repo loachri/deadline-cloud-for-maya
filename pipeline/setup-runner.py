@@ -947,7 +947,7 @@ def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
         maya_app = Path(f"/Applications/Autodesk/maya{version}/Maya.app")
         mayapy_real = maya_app / "Contents" / "bin" / "mayapy"
         if mayapy_real.exists():
-            deps_path = f"/opt/maya-deps/{version}/site-packages"
+            deps_path = str(Path.home() / f"maya-deps/{version}/site-packages")
             wrapper_content = (
                 f"#!/bin/sh\n"
                 f"export MAYA_LOCATION=\"{maya_app}/Contents\"\n"
@@ -977,7 +977,7 @@ def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
 
         # Maya's bundled Python may lack SSL, use system pip with --target
         # Install to a writable location since Maya's site-packages is owned by root
-        maya_site_packages = Path(f"/opt/maya-deps/{version}/site-packages")
+        maya_site_packages = Path.home() / f"maya-deps/{version}/site-packages"
         maya_site_packages.mkdir(parents=True, exist_ok=True)
         python_version = MAYA_VERSION_CONFIG[version]["python"]
 
