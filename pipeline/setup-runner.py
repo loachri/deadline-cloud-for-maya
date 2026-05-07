@@ -595,27 +595,35 @@ def setup_linux(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
             label=f"hatch install submitter (Maya {version})",
         )
 
-        # Install integ test dependencies into Maya's Python
+        # Maya's bundled Python lacks SSL, so we can't use mayapy -m pip.
+        # Use system pip with --target to install into Maya's site-packages.
+        maya_site_packages = mayapy_exe.parent.parent / "lib" / f"python{MAYA_VERSION_CONFIG[version]['python']}" / "site-packages"
+        maya_site_packages.mkdir(parents=True, exist_ok=True)
+        python_version = MAYA_VERSION_CONFIG[version]["python"]
+
         print(f"Installing integ test dependencies for Maya {version}...")
         run_with_timeout(
             [
-                str(mayapy_exe),
-                "-m",
-                "pip",
-                "install",
-                "-v",
-                "-r",
-                "requirements-integ-testing.txt",
-                "-r",
-                "requirements-testing.txt",
+                "pip", "install",
+                "--target", str(maya_site_packages),
+                "--python-version", python_version,
+                "--only-binary=:all:",
+                "-r", "requirements-integ-testing.txt",
+                "-r", "requirements-testing.txt",
             ],
             timeout=DEFAULT_CMD_TIMEOUT,
             label=f"pip install requirements (Maya {version})",
         )
 
-        # Install the package itself so mayapy can import it
+        # Install the package itself
         run_with_timeout(
-            [str(mayapy_exe), "-m", "pip", "install", "-v", "."],
+            [
+                "pip", "install",
+                "--target", str(maya_site_packages),
+                "--python-version", python_version,
+                "--only-binary=:all:",
+                ".",
+            ],
             timeout=DEFAULT_CMD_TIMEOUT,
             label=f"pip install project (Maya {version})",
         )
