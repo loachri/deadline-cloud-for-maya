@@ -934,12 +934,6 @@ def setup_windows(maya_versions: Sequence[str], renderers: Sequence[str]) -> Non
 
     _register_pywin32()
 
-    # Copy mayapy.exe to a PATH directory so tests can find it
-    # .CMD wrappers don't work with subprocess.Popen (adaptor uses it)
-    mayapy_src = Path(f"C:/Program Files/Autodesk/Maya{maya_versions[-1]}/bin/mayapy.exe")
-    if mayapy_src.exists():
-        run(["powershell", "-Command", f'Copy-Item "{mayapy_src}" "C:\\Windows\\mayapy.exe" -Force'])
-
 
 # ---------------------------------------------------------------------------
 # macOS
