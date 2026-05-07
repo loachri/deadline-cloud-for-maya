@@ -559,6 +559,7 @@ def setup_linux(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
             "libxkbcommon-x11",
             "fontconfig",
             "xorg-x11-server-Xvfb",
+            "libva",
         ]
     )
 
