@@ -1075,7 +1075,7 @@ def _install_vray_macos(version: str) -> None:
         # Find the .app installer
         app = next(mount_point.glob("*.app"), None)
         if app:
-            install_dir.mkdir(parents=True, exist_ok=True)
+            run(["sudo", "mkdir", "-p", str(install_dir)])
             run(
                 [str(app / "Contents/MacOS/run_installer"), "-gui=0", "-auto", "-quiet=1", f"-unpackInstall={install_dir}"],
                 cwd=app / "Contents/MacOS",
