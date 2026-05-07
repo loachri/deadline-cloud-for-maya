@@ -934,6 +934,15 @@ def setup_windows(maya_versions: Sequence[str], renderers: Sequence[str]) -> Non
 
     _register_pywin32()
 
+    # Add Maya bin to system PATH so hatch integ-ci:test can find mayapy
+    # Must be Machine level to persist across separate CodeBuild commands
+    maya_paths = ";".join([f"C:\\Program Files\\Autodesk\\Maya{v}\\bin" for v in maya_versions])
+    run(
+        ["powershell", "-Command",
+         f'$current = [Environment]::GetEnvironmentVariable("PATH", "Machine"); '
+         f'[Environment]::SetEnvironmentVariable("PATH", "{maya_paths};$current", "Machine")']
+    )
+
 
 # ---------------------------------------------------------------------------
 # macOS
