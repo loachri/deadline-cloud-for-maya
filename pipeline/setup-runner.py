@@ -1038,6 +1038,82 @@ def _install_maya_macos(version: str) -> Path:
     return maya_app
 
 
+def _install_mtoa_macos(version: str) -> None:
+    """Install MtoA on macOS via .pkg."""
+    mtoa_s3 = {"2025": "mtoa/5.5/MtoA-5.5.4.2-darwin-2025.pkg", "2026": "mtoa/5.5/MtoA-5.5.4.2-darwin-2026.pkg"}
+    if version not in mtoa_s3:
+        print(f"WARNING: No macOS MtoA for Maya {version}, skipping")
+        return
+    # Check if already installed
+    if Path(f"/opt/solidangle/mtoa/{version}/plug-ins/mtoa.bundle").exists():
+        print(f"MtoA for Maya {version} already installed")
+        return
+    pkg_path = Path(f"/tmp/mtoa_{version}.pkg")
+    print(f"Installing MtoA for Maya {version}...")
+    download_from_s3(mtoa_s3[version], pkg_path)
+    run(["sudo", "installer", "-pkg", str(pkg_path), "-target", "/"])
+    pkg_path.unlink(missing_ok=True)
+
+
+def _install_vray_macos(version: str) -> None:
+    """Install V-Ray on macOS via DMG + Chaos installer."""
+    vray_s3 = {"2025": "maya-vray/71000/vray_adv_71000_maya2025_bigsur_univ.dmg", "2026": "maya-vray/71002/vray_adv_71002_maya2026_bigsur_univ.dmg"}
+    if version not in vray_s3:
+        print(f"WARNING: No macOS V-Ray for Maya {version}, skipping")
+        return
+    install_dir = Path(f"/opt/vray/maya{version}")
+    if (install_dir / "maya_vray/plug-ins/vrayformaya.bundle").exists():
+        print(f"V-Ray for Maya {version} already installed")
+        return
+    dmg_path = Path(f"/tmp/vray_{version}.dmg")
+    mount_point = Path(f"/tmp/vray-{version}-mount")
+    print(f"Installing V-Ray for Maya {version}...")
+    download_from_s3(vray_s3[version], dmg_path)
+    mount_point.mkdir(parents=True, exist_ok=True)
+    run(["hdiutil", "attach", str(dmg_path), "-mountpoint", str(mount_point), "-nobrowse"])
+    try:
+        # Find the .app installer
+        app = next(mount_point.glob("*.app"), None)
+        if app:
+            install_dir.mkdir(parents=True, exist_ok=True)
+            run(
+                [str(app / "Contents/MacOS/run_installer"), "-gui=0", "-auto", "-quiet=1", f"-unpackInstall={install_dir}"],
+                cwd=app / "Contents/MacOS",
+            )
+    finally:
+        run(["hdiutil", "detach", str(mount_point)], check=False)
+    dmg_path.unlink(missing_ok=True)
+
+
+def _install_redshift_macos(maya_versions: Sequence[str]) -> None:
+    """Install Redshift on macOS via DMG + InstallBuilder."""
+    redshift_root = Path("/opt/redshift")
+    if (redshift_root / "Plugins/Maya/2025/redshift4maya.bundle").exists():
+        print("Redshift already installed")
+        return
+    s3_key = "redshift/2026/redshift_2026.6.0_2497872080_macos.dmg"
+    dmg_path = Path("/tmp/redshift.dmg")
+    mount_point = Path("/tmp/redshift-mount")
+    print("Installing Redshift...")
+    download_from_s3(s3_key, dmg_path)
+    mount_point.mkdir(parents=True, exist_ok=True)
+    run(["hdiutil", "attach", str(dmg_path), "-mountpoint", str(mount_point), "-nobrowse"])
+    try:
+        app = next(mount_point.glob("*.app"), None)
+        if app:
+            # Use the arm64 binary directly with sudo
+            components = ",".join([f"PluginMaya{v}" for v in maya_versions])
+            run(
+                ["sudo", str(app / "Contents/MacOS/osx-arm64"),
+                 "--mode", "unattended",
+                 "--enable-components", f"MayaGroup,{components}",
+                 "--prefix", str(redshift_root)],
+            )
+    finally:
+        run(["hdiutil", "detach", str(mount_point)], check=False)
+    dmg_path.unlink(missing_ok=True)
+
+
 def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
     _clean_stale_locks(maya_versions, "macos")
     for version in maya_versions:
@@ -1053,6 +1129,12 @@ def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
         f"export MAYA_LOCATION=\"$MAYA_APP/Contents\"\n"
         f"export DYLD_LIBRARY_PATH=\"$MAYA_APP/Contents/MacOS\"\n"
         f"export PYTHONPATH=\"$HOME/maya-deps/$VER/site-packages:${{PYTHONPATH:-}}\"\n"
+        f"# Renderer module paths\n"
+        f"export MAYA_MODULE_PATH=\"/opt/solidangle/mtoa/$VER:/opt/vray/maya$VER/maya_root/modules:${{MAYA_MODULE_PATH:-}}\"\n"
+        f"export MAYA_PLUG_IN_PATH=\"/opt/redshift/Plugins/Maya/$VER:${{MAYA_PLUG_IN_PATH:-}}\"\n"
+        f"export MAYA_SCRIPT_PATH=\"/opt/redshift/Plugins/Maya/Common/scripts:${{MAYA_SCRIPT_PATH:-}}\"\n"
+        f"export MAYA_RENDER_DESC_PATH=\"/opt/redshift/Plugins/Maya/Common/rendererDesc:${{MAYA_RENDER_DESC_PATH:-}}\"\n"
+        f"export REDSHIFT_COREDATAPATH=\"/opt/redshift\"\n"
         f"exec \"$MAYA_APP/Contents/bin/mayapy\" \"$@\"\n"
     )
     wrapper = Path("/tmp/mayapy_wrapper.sh")
@@ -1087,6 +1169,8 @@ def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
                 "pip", "install",
                 "--target", str(maya_site_packages),
                 "--python-version", python_version,
+                "--platform", "macosx_11_0_arm64",
+                "--implementation", "cp",
                 "--only-binary=:all:",
                 "-r", "requirements-integ-testing.txt",
                 "-r", "requirements-testing.txt",
@@ -1100,6 +1184,8 @@ def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
                 "pip", "install",
                 "--target", str(maya_site_packages),
                 "--python-version", python_version,
+                "--platform", "macosx_11_0_arm64",
+                "--implementation", "cp",
                 "--only-binary=:all:",
                 ".",
             ],
@@ -1107,11 +1193,15 @@ def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
             label=f"pip install project (Maya {version})",
         )
 
-    if renderers:
-        print(
-            "WARNING: Skipping renderer installation on macOS. "
-            "Deadline Cloud does not support macOS for SMF rendering."
-        )
+    # Install renderers on macOS
+    if "mtoa" in renderers:
+        for version in maya_versions:
+            _install_mtoa_macos(version)
+    if "vray" in renderers:
+        for version in maya_versions:
+            _install_vray_macos(version)
+    if "redshift" in renderers:
+        _install_redshift_macos(maya_versions)
 
 
 # ---------------------------------------------------------------------------
