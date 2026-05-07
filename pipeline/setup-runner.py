@@ -765,7 +765,6 @@ def _install_maya_windows(version: str) -> Path:
 
 def _install_vray_windows(version: str) -> None:
     """Install V-Ray for Maya on Windows."""
-    # V-Ray versions mapped to S3 keys for Windows
     vray_win_config = {
         "2025": "maya-vray/70002/vray_adv_70002_maya2025_x64.exe",
         "2026": "maya-vray/71002/vray_adv_71002_maya2026_x64.exe",
@@ -773,8 +772,9 @@ def _install_vray_windows(version: str) -> None:
     if version not in vray_win_config:
         print(f"WARNING: No Windows V-Ray config for Maya {version}, skipping")
         return
-    vray_dir = Path(f"C:/Program Files/Chaos Group/V-Ray/Maya {version}")
-    if vray_dir.exists():
+    # V-Ray installs to Program Files and registers its .module with Maya automatically
+    plugin_check = Path(f"C:/Program Files/Chaos/V-Ray/Maya {version} for x64/maya_vray/plug-ins/vrayformaya.mll")
+    if plugin_check.exists():
         print(f"V-Ray for Maya {version} already installed")
         return
     s3_key = vray_win_config[version]
@@ -782,13 +782,10 @@ def _install_vray_windows(version: str) -> None:
     installer_path.parent.mkdir(parents=True, exist_ok=True)
     print(f"Installing V-Ray for Maya {version}...")
     download_from_s3(s3_key, installer_path)
-    run(["chmod", "+x", str(installer_path)], check=False)
-    # Chaos installer: -gui=0 -auto -quiet=1
-    result = subprocess.run(
-        [str(installer_path), "-gui=0", "-auto", "-quiet=1"],
-        check=False,
+    run(
+        ["powershell", "-Command",
+         f'Start-Process "{installer_path}" -ArgumentList "-gui=0","-auto","-quiet=1" -Wait -NoNewWindow']
     )
-    print(f"V-Ray install exit code: {result.returncode}")
     installer_path.unlink(missing_ok=True)
 
 
@@ -801,8 +798,8 @@ def _install_mtoa_windows(version: str) -> None:
     if version not in mtoa_win_config:
         print(f"WARNING: No Windows MtoA config for Maya {version}, skipping")
         return
-    mtoa_dir = Path(f"C:/solidangle/mtoadeploy/{version}")
-    if mtoa_dir.exists():
+    plugin_check = Path(f"C:/Program Files/Autodesk/Arnold/maya{version}/plug-ins/mtoa.mll")
+    if plugin_check.exists():
         print(f"MtoA for Maya {version} already installed")
         return
     s3_key = mtoa_win_config[version]
@@ -810,15 +807,18 @@ def _install_mtoa_windows(version: str) -> None:
     installer_path.parent.mkdir(parents=True, exist_ok=True)
     print(f"Installing MtoA for Maya {version}...")
     download_from_s3(s3_key, installer_path)
-    # MSI silent install
-    run(["msiexec", "/i", str(installer_path), "/quiet", "/norestart"])
+    run(
+        ["powershell", "-Command",
+         f'Start-Process "msiexec" -ArgumentList "/i","{installer_path}","/quiet","/norestart" -Wait -NoNewWindow']
+    )
     installer_path.unlink(missing_ok=True)
 
 
 def _install_redshift_windows() -> None:
-    """Install Redshift on Windows."""
-    redshift_dir = Path("C:/ProgramData/Redshift")
-    if redshift_dir.exists():
+    """Install Redshift on Windows with Maya plugin registration."""
+    redshift_root = Path("C:/Program Files/Maxon Redshift 2026")
+    plugin_check = redshift_root / "Plugins" / "Maya" / "2025" / "nt-x86-64" / "redshift4maya.mll"
+    if plugin_check.exists():
         print("Redshift already installed")
         return
     s3_key = "redshift/2026/redshift_2026.6.0_2497872080_win_x64.exe"
@@ -826,13 +826,30 @@ def _install_redshift_windows() -> None:
     installer_path.parent.mkdir(parents=True, exist_ok=True)
     print("Installing Redshift...")
     download_from_s3(s3_key, installer_path)
-    # Redshift Windows installer - try silent flags
-    result = subprocess.run(
-        [str(installer_path), "/S", "/D=C:\\ProgramData\\Redshift"],
-        check=False,
+    # InstallBuilder with Maya plugin components enabled
+    run(
+        ["powershell", "-Command",
+         f'Start-Process "{installer_path}" -ArgumentList "--mode","unattended","--enable-components","MayaGroup,PluginMaya2025,PluginMaya2026" -Wait -NoNewWindow']
     )
-    print(f"Redshift install exit code: {result.returncode}")
     installer_path.unlink(missing_ok=True)
+
+    # Register Redshift with each Maya version
+    for ver in ["2025", "2026"]:
+        maya_env_dir = Path(f"C:/Users/Default/Documents/maya/{ver}")
+        maya_env_dir.mkdir(parents=True, exist_ok=True)
+        maya_env_file = maya_env_dir / "Maya.env"
+        if not maya_env_file.exists():
+            maya_env_file.touch()
+        # Run the registration tool
+        reg_tool = redshift_root / "Tools" / "Redshift4MayaEnv.exe"
+        if reg_tool.exists():
+            run([str(reg_tool), str(maya_env_file), str(redshift_root), ver])
+        # Copy renderer descriptor
+        renderer_xml = redshift_root / "Plugins" / "Maya" / "Common" / "rendererDesc" / "redshiftRenderer.xml"
+        maya_renderer_dir = Path(f"C:/Program Files/Autodesk/Maya{ver}/bin/rendererDesc")
+        if renderer_xml.exists() and maya_renderer_dir.exists():
+            run(["powershell", "-Command",
+                 f'Copy-Item "{renderer_xml}" "{maya_renderer_dir}" -Force'])
 
 
 def _register_pywin32() -> None:
