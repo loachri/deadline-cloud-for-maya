@@ -703,13 +703,29 @@ def _install_maya_windows(version: str) -> Path:
         ]
     )
 
-    # TODO: Determine correct headless install method for Windows Maya installer.
-    # The zip contains _001_002.exe (self-extractor) + _002_002.7z (payload).
-    # The exe is a GUI app that hangs headlessly. Need to find correct silent flags.
-    print("ERROR: Windows Maya headless install not yet implemented.")
-    print(f"Contents of {setup_dir}:")
-    run(["powershell", "-Command", f"Get-ChildItem '{setup_dir}'"], check=False)
-    sys.exit(1)
+    # The zip contains _001_002.exe (GUI, hangs headlessly) + _002_002.7z (payload).
+    # Extract the .7z directly with 7-Zip, then run Setup.exe -q.
+    seven_z = next(setup_dir.rglob("*_002_002.7z"), None)
+    if seven_z is None:
+        # Fallback: maybe it's a zip that already contains Setup.exe (e.g. Maya 2024)
+        setup_exe = next(setup_dir.rglob("Setup.exe"), None)
+    else:
+        extract_dest = setup_dir / "extracted"
+        extract_dest.mkdir(parents=True, exist_ok=True)
+        print(f"Extracting 7z payload: {seven_z}")
+        run(
+            [
+                "powershell",
+                "-Command",
+                f'& "C:\\Program Files\\7-Zip\\7z.exe" x "{seven_z}" "-o{extract_dest}" -y',
+            ]
+        )
+        setup_exe = next(extract_dest.rglob("Setup.exe"), None)
+
+    if setup_exe is None:
+        print(f"ERROR: Setup.exe not found under {setup_dir}")
+        run(["powershell", "-Command", f"Get-ChildItem -Recurse '{setup_dir}'"], check=False)
+        sys.exit(1)
         sys.exit(1)
 
     print(f"Starting Maya installation via {setup_exe}...")
@@ -777,6 +793,17 @@ def _register_pywin32() -> None:
 
 def setup_windows(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
     _clean_stale_locks(maya_versions, "windows")
+
+    # Ensure 7-Zip is available (needed to extract Maya .7z installer)
+    seven_zip = Path("C:/Program Files/7-Zip/7z.exe")
+    if not seven_zip.exists():
+        print("Installing 7-Zip...")
+        run(
+            ["powershell", "-Command",
+             "Invoke-WebRequest -Uri 'https://www.7-zip.org/a/7z2408-x64.exe' -OutFile C:\\temp\\7z-install.exe; "
+             "Start-Process C:\\temp\\7z-install.exe -ArgumentList '/S' -Wait"]
+        )
+
     for version in maya_versions:
         _install_maya_windows(version)
 
