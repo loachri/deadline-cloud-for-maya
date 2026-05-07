@@ -703,29 +703,13 @@ def _install_maya_windows(version: str) -> Path:
         ]
     )
 
-    # The zip contains a self-extracting exe (_001_002.exe) + 7z payload (_002_002.7z).
-    # Run the exe with /extract to silently extract the installer files.
-    # If no self-extractor is found, Setup.exe may already be present (e.g. Maya 2024 zips).
-    sfx_exe = next(setup_dir.rglob("*_001_002.exe"), None)
-    if sfx_exe:
-        print(f"Running self-extracting installer: {sfx_exe}")
-        extract_dest = setup_dir / "extracted"
-        extract_dest.mkdir(parents=True, exist_ok=True)
-        # Autodesk's self-extracting exe supports /extract <path> for silent extraction
-        run(
-            [
-                "powershell",
-                "-Command",
-                f'Start-Process "{sfx_exe}" -ArgumentList "/extract", "{extract_dest}" -Wait',
-            ]
-        )
-
-    # Autodesk zips extract to either the zip's directory or to a nested folder
-    # containing Setup.exe. Find it rather than hard-coding a layout.
-    setup_exe = next(setup_dir.rglob("Setup.exe"), None)
-    if setup_exe is None:
-        print(f"ERROR: Setup.exe not found under {setup_dir}")
-        run(["powershell", "-Command", f"Get-ChildItem -Recurse '{setup_dir}'"], check=False)
+    # TODO: Determine correct headless install method for Windows Maya installer.
+    # The zip contains _001_002.exe (self-extractor) + _002_002.7z (payload).
+    # The exe is a GUI app that hangs headlessly. Need to find correct silent flags.
+    print("ERROR: Windows Maya headless install not yet implemented.")
+    print(f"Contents of {setup_dir}:")
+    run(["powershell", "-Command", f"Get-ChildItem '{setup_dir}'"], check=False)
+    sys.exit(1)
         sys.exit(1)
 
     print(f"Starting Maya installation via {setup_exe}...")
