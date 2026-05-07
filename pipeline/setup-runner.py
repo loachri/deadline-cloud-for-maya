@@ -360,19 +360,20 @@ def _install_mtoa_linux(version: str) -> None:
 
         run(["chmod", "+x", str(installer_path)])
         mtoa_install_dir.mkdir(parents=True, exist_ok=True)
-        # MtoA Linux installer is an InstallBuilder self-extractor that honors
-        # --mode unattended, --prefix, and --installdir.
-        run(
-            [
-                str(installer_path),
-                "--mode",
-                "unattended",
-                "--unattendedmodeui",
-                "none",
-                "--prefix",
-                str(mtoa_install_dir),
-            ]
-        )
+        # MtoA is a Makeself archive. Extract then unzip the package.
+        extract_tmp = Path(f"/tmp/mtoa-{version}-extract")
+        if extract_tmp.exists():
+            run(["rm", "-rf", str(extract_tmp)], check=False)
+        run([str(installer_path), "--noexec", "--target", str(extract_tmp)])
+        # Unzip the package into the install dir
+        pkg_zip = next(extract_tmp.glob("*.zip"), None)
+        if pkg_zip:
+            run(["unzip", "-q", str(pkg_zip), "-d", str(mtoa_install_dir)])
+        else:
+            print(f"ERROR: No .zip found in {extract_tmp}")
+            run(["ls", "-la", str(extract_tmp)], check=False)
+            sys.exit(1)
+        run(["rm", "-rf", str(extract_tmp)], check=False)
 
         # Verify — installer lays down plugins under $prefix/plug-ins.
         arnold_plugin = mtoa_install_dir / "plug-ins" / "mtoa.so"
@@ -424,24 +425,15 @@ def _install_vray_linux(version: str) -> None:
         verify_checksum(installer_path, VRAY_CONFIG[version]["checksums"]["linux"])
 
         run(["chmod", "+x", str(installer_path)])
-        # Chaos V-Ray Linux installer is an InstallBuilder self-extractor.
-        # Use unattended mode and explicit paths so the install is predictable.
+        # Chaos V-Ray installer uses custom flags for silent install
         vray_install_dir.mkdir(parents=True, exist_ok=True)
         run(
             [
                 str(installer_path),
-                "--mode",
-                "unattended",
-                "--unattendedmodeui",
-                "none",
-                "--prefix",
-                str(vray_install_dir),
-                # MAYA_ROOT is required by the V-Ray postinstall so it knows
-                # where to drop the module files.
-                "--MAYA_ROOT",
-                f"/opt/Autodesk/mayaio/{version}",
-                "--RUNAS_USER",
-                "root",
+                "-gui=0",
+                "-auto",
+                "-quiet=1",
+                f"-unpackInstall={vray_install_dir}",
             ],
             check=False,
         )
@@ -488,20 +480,21 @@ def _install_redshift_linux() -> None:
         verify_checksum(installer_path, REDSHIFT_CONFIG["linux"]["checksum"])
 
         run(["chmod", "+x", str(installer_path)])
-        # Redshift Linux installer is an InstallBuilder self-extractor.
+        # Redshift is a Makeself archive. Extract then untar the package.
         redshift_root.mkdir(parents=True, exist_ok=True)
-        run(
-            [
-                str(installer_path),
-                "--mode",
-                "unattended",
-                "--unattendedmodeui",
-                "none",
-                "--prefix",
-                str(redshift_root),
-            ],
-            check=False,
-        )
+        extract_tmp = Path("/tmp/redshift-extract")
+        if extract_tmp.exists():
+            run(["rm", "-rf", str(extract_tmp)], check=False)
+        run([str(installer_path), "--noexec", "--target", str(extract_tmp)])
+        # Extract the tarball into the install dir
+        pkg_tar = next(extract_tmp.glob("*.tar.gz"), None)
+        if pkg_tar:
+            run(["tar", "xzf", str(pkg_tar), "-C", str(redshift_root)])
+        else:
+            print(f"ERROR: No .tar.gz found in {extract_tmp}")
+            run(["ls", "-la", str(extract_tmp)], check=False)
+            sys.exit(1)
+        run(["rm", "-rf", str(extract_tmp)], check=False)
 
         # Verify — redshiftCmdLine lands in $prefix/bin.
         redshift_cmd = redshift_root / "bin" / "redshiftCmdLine"
