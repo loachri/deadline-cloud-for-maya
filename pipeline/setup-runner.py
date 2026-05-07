@@ -254,7 +254,10 @@ def _install_maya_linux(version: str) -> Path:
 
         run(["chmod", "+x", str(installer_path)])
         extract_dir = Path(f"/tmp/maya-{version}-extract")
-        run(
+        # --phase2 skips the interactive EULA prompt
+        # Pipe 'yes' to stdin as additional safety against any prompts
+        print(f"Extracting installer (this may take a moment)...")
+        result = subprocess.run(
             [
                 str(installer_path),
                 "--noexec",
@@ -262,8 +265,13 @@ def _install_maya_linux(version: str) -> Path:
                 "--nox11",
                 "--target",
                 str(extract_dir),
-            ]
+                "--phase2",
+            ],
+            input=b"yes\n",
+            check=False,
         )
+        if result.returncode != 0:
+            print(f"WARNING: Installer extraction returned code {result.returncode}, continuing...")
 
         # The .run extracts to a directory containing an RPM.
         # Use rpm2cpio to extract it (same approach as BealineCondaRecipe-Maya).
