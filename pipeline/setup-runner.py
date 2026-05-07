@@ -255,23 +255,14 @@ def _install_maya_linux(version: str) -> Path:
         run(["chmod", "+x", str(installer_path)])
         extract_dir = Path(f"/tmp/maya-{version}-extract")
         extract_dir.mkdir(parents=True, exist_ok=True)
-        # --accept-eula=yes skips the interactive EULA prompt
+        # Pipe 'yes' to accept the EULA, use --target to control extraction location
         print("Extracting installer (this may take a moment)...")
         result = subprocess.run(
-            [
-                str(installer_path),
-                "--noexec",
-                "--keep",
-                "--nox11",
-                "--accept-eula=yes",
-                "--target",
-                str(extract_dir),
-            ],
-            input=b"yes\n",
+            f"yes | {installer_path} --keep --nox11 --target {extract_dir}",
+            shell=True,
             check=False,
         )
-        if result.returncode != 0:
-            print(f"WARNING: Extraction returned code {result.returncode}")
+        print(f"Installer exit code: {result.returncode}")
 
         rpms = list(extract_dir.rglob("*.rpm"))
 
