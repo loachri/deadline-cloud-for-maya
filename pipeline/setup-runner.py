@@ -229,10 +229,14 @@ def _install_maya_linux(version: str) -> Path:
     config = MAYA_VERSION_CONFIG[version]
     installer_name = config["installer"]["linux"]
     maya_dir = Path(f"/opt/Autodesk/mayaio/{version}")
-    maya_marker = maya_dir / ".installed"
 
-    if maya_marker.exists():
-        print(f"Maya {version} already installed")
+    # Check if Maya is already installed by looking for the real binary
+    existing = subprocess.run(
+        ["find", str(maya_dir), "-name", "mayapy", "-type", "f"],
+        capture_output=True, text=True, check=False,
+    )
+    if existing.stdout.strip():
+        print(f"Maya {version} already installed: {existing.stdout.strip().split(chr(10))[0]}")
         return maya_dir
 
     lock_file = Path(f"/tmp/maya-{version}.lock")
@@ -240,7 +244,11 @@ def _install_maya_linux(version: str) -> Path:
         print(f"Waiting for concurrent Maya {version} install...")
         for _ in range(120):
             time.sleep(1)
-            if maya_marker.exists():
+            check = subprocess.run(
+                ["find", str(maya_dir), "-name", "mayapy", "-type", "f"],
+                capture_output=True, text=True, check=False,
+            )
+            if check.stdout.strip():
                 break
         return maya_dir
 
@@ -253,12 +261,12 @@ def _install_maya_linux(version: str) -> Path:
         verify_checksum(installer_path, MAYA_CHECKSUMS[version].get("linux", ""))
 
         run(["chmod", "+x", str(installer_path)])
-        # Use a directory outside /tmp because the installer's cleanup script
-        # runs rm -rf /tmp/* which deletes the extract directory if it's in /tmp
+        # Extract to /opt (not /tmp) and clean any stale dir from prior runs
         extract_dir = Path(f"/opt/maya-{version}-extract")
         if extract_dir.exists():
             run(["rm", "-rf", str(extract_dir)], check=False)
-        # --phase2 skips the EULA prompt (reads from /dev/tty, can't be piped)
+        # --noexec: don't run post-extract scripts (they do rm -rf /tmp/*)
+        # --phase2: skip EULA prompt
         print("Extracting installer (this may take a moment)...")
         result = subprocess.run(
             [
@@ -306,9 +314,6 @@ def _install_maya_linux(version: str) -> Path:
         # Verify installation
         if mayapy_exe and mayapy_exe.exists():
             print(f"SUCCESS: mayapy found at {mayapy_exe}")
-            maya_marker.touch()
-            # Store the path for later use
-            (maya_dir / ".mayapy_path").write_text(str(mayapy_exe))
         else:
             print(f"ERROR: mayapy NOT found under {maya_dir}")
             run(["find", str(maya_dir), "-maxdepth", "5", "-type", "f", "-name", "maya*"], check=False)
@@ -516,15 +521,9 @@ def _clean_stale_locks(maya_versions: Sequence[str], plat: str) -> None:
     """Remove stale lock files from previous failed runs on reserved capacity fleets."""
     for version in maya_versions:
         lock_file = Path(f"/tmp/maya-{version}.lock")
-        if plat == "linux":
-            marker = Path(f"/opt/Autodesk/mayaio/{version}/.installed")
-        elif plat == "windows":
-            marker = Path(f"C:/Program Files/Autodesk/Maya{version}/.installed")
-        elif plat == "macos":
-            marker = Path(f"~/Library/Application Support/.maya-{version}-installed").expanduser()
-        else:
-            continue
-        if lock_file.exists() and not marker.exists():
+        if lock_file.exists():
+            print(f"Removing stale lock file for Maya {version}")
+            lock_file.unlink()
             print(f"Removing stale lock file for Maya {version}")
             lock_file.unlink()
 
@@ -579,20 +578,15 @@ def setup_linux(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
     # Install the submitter and deps into each Maya version
     for version in maya_versions:
         maya_dir = Path(f"/opt/Autodesk/mayaio/{version}")
-        # Read the mayapy path stored during installation
-        mayapy_path_file = maya_dir / ".mayapy_path"
-        if mayapy_path_file.exists():
-            mayapy_exe = Path(mayapy_path_file.read_text().strip())
-        else:
-            # Fallback: find it
-            result = subprocess.run(
-                ["find", str(maya_dir), "-name", "mayapy", "-type", "f"],
-                capture_output=True, text=True, check=False,
-            )
-            mayapy_exe = Path(result.stdout.strip().split("\n")[0]) if result.stdout.strip() else None
-            if not mayapy_exe or not mayapy_exe.exists():
-                print(f"ERROR: Cannot find mayapy for Maya {version}")
-                sys.exit(1)
+        # Find mayapy
+        result = subprocess.run(
+            ["find", str(maya_dir), "-name", "mayapy", "-type", "f"],
+            capture_output=True, text=True, check=False,
+        )
+        mayapy_exe = Path(result.stdout.strip().split("\n")[0]) if result.stdout.strip() else None
+        if not mayapy_exe or not mayapy_exe.exists():
+            print(f"ERROR: Cannot find mayapy for Maya {version}")
+            sys.exit(1)
 
         print(f"Installing submitter for Maya {version}...")
         run_with_timeout(
