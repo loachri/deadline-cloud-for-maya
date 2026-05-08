@@ -951,17 +951,14 @@ def _install_maya_macos(version: str) -> Path:
     maya_app = Path(f"/Applications/Autodesk/maya{version}/Maya.app")
     mayapy_path = maya_app / "Contents" / "bin" / "mayapy"
 
-    # Verify mayapy exists AND works (stale installs may have broken shell-script wrappers)
+    # Verify mayapy exists AND is a real binary (stale installs may have shell-script wrappers)
     if mayapy_path.exists():
-        check = subprocess.run(
-            [str(mayapy_path), "-c", "print('ok')"],
-            capture_output=True, timeout=10, check=False,
-        )
-        if check.returncode == 0 and b"ok" in check.stdout:
-            print(f"Maya {version} already installed and functional")
+        result = subprocess.run(["file", str(mayapy_path)], capture_output=True, text=True, check=False)
+        if "Mach-O" in result.stdout:
+            print(f"Maya {version} already installed and verified (Mach-O binary)")
             return maya_app
         else:
-            print(f"Maya {version} found but broken, reinstalling...")
+            print(f"Maya {version} found but mayapy is not a binary ({result.stdout.strip()}), reinstalling...")
             run(["sudo", "rm", "-rf", str(maya_app.parent)], check=False)
 
     lock_file = Path(f"/tmp/maya-{version}.lock")

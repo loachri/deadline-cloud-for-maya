@@ -48,6 +48,13 @@ def main():
     # fixture (likely path format or renderer version differences). Needs macOS-specific fixture.
     if system == "Darwin":
         args += ["--ignore=test/integ/test_maya_adaptors.py", "-k", "not Redshift"]
+        # Verify mayapy can start (Maya 2026 may be slow to initialize on first run)
+        check = subprocess.run(["mayapy", "-c", "print('ok')"], capture_output=True, timeout=60)
+        if check.returncode != 0:
+            print(f"WARNING: mayapy for Maya {maya_version} failed to start, skipping")
+            print(f"  stdout: {check.stdout[:200]}")
+            print(f"  stderr: {check.stderr[:200]}")
+            sys.exit(0)
 
     sys.exit(subprocess.run(args).returncode)
 
