@@ -1118,6 +1118,17 @@ def _install_redshift_macos(maya_versions: Sequence[str]) -> None:
         run(["hdiutil", "detach", str(mount_point)], check=False)
     dmg_path.unlink(missing_ok=True)
 
+    # Symlink xgen dylibs into Maya's MacOS dir so Redshift plugin can load them
+    # (SIP strips DYLD_LIBRARY_PATH, so we put them where the loader already looks)
+    for ver in maya_versions:
+        maya_macos = Path(f"/Applications/Autodesk/maya{ver}/Maya.app/Contents/MacOS")
+        xgen_lib = Path(f"/Applications/Autodesk/maya{ver}/plug-ins/xgen/lib")
+        if xgen_lib.exists() and maya_macos.exists():
+            for dylib in xgen_lib.glob("*.dylib"):
+                target = maya_macos / dylib.name
+                if not target.exists():
+                    run(["sudo", "ln", "-s", str(dylib), str(target)])
+
 
 def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
     _clean_stale_locks(maya_versions, "macos")
