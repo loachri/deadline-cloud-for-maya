@@ -44,8 +44,9 @@ def main():
 
     args = ["mayapy", "-m", "pytest", "--no-cov", "test/integ", "-vvv", "--numprocesses=1"]
     # macOS: skip adaptor tests (no SMF rendering support, native extension ABI issues)
+    # Also skip renderer-dependent submitter tests (plugins can't load without full deps)
     if system == "Darwin":
-        args += ["--ignore=test/integ/test_maya_adaptors.py"]
+        args += ["--ignore=test/integ/test_maya_adaptors.py", "-k", "not Redshift"]
 
     sys.exit(subprocess.run(args).returncode)
 
