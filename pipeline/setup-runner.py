@@ -1132,7 +1132,7 @@ def setup_macos(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
         f"VER=\"${{MAYA_VERSION:-{maya_versions[0]}}}\"\n"
         f"MAYA_APP=\"/Applications/Autodesk/maya$VER/Maya.app\"\n"
         f"export MAYA_LOCATION=\"$MAYA_APP/Contents\"\n"
-        f"export DYLD_LIBRARY_PATH=\"$MAYA_APP/Contents/MacOS\"\n"
+        f"export DYLD_LIBRARY_PATH=\"$MAYA_APP/Contents/MacOS:$MAYA_APP/../plug-ins/xgen/lib\"\n"
         f"export PYTHONPATH=\"$HOME/maya-deps/$VER/site-packages:${{PYTHONPATH:-}}\"\n"
         f"# Renderer module paths\n"
         f"export MAYA_MODULE_PATH=\"/opt/solidangle/mtoa/$VER:/opt/vray/maya$VER/maya_root/modules:${{MAYA_MODULE_PATH:-}}\"\n"
