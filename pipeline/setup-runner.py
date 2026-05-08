@@ -949,13 +949,20 @@ def _install_maya_macos(version: str) -> Path:
     config = MAYA_VERSION_CONFIG[version]
     installer_name = config["installer"]["macos"]
     maya_app = Path(f"/Applications/Autodesk/maya{version}/Maya.app")
-    # Marker lives outside the .app so reinstalling Maya doesn't preserve a stale marker.
-    marker = Path(f"~/Library/Application Support/.maya-{version}-installed").expanduser()
-    marker.parent.mkdir(parents=True, exist_ok=True)
+    mayapy_path = maya_app / "Contents" / "bin" / "mayapy"
 
-    if marker.exists():
-        print(f"Maya {version} already installed")
-        return maya_app
+    # Verify mayapy exists AND works (stale installs may have broken shell-script wrappers)
+    if mayapy_path.exists():
+        check = subprocess.run(
+            [str(mayapy_path), "-c", "print('ok')"],
+            capture_output=True, timeout=10, check=False,
+        )
+        if check.returncode == 0 and b"ok" in check.stdout:
+            print(f"Maya {version} already installed and functional")
+            return maya_app
+        else:
+            print(f"Maya {version} found but broken, reinstalling...")
+            run(["sudo", "rm", "-rf", str(maya_app.parent)], check=False)
 
     lock_file = Path(f"/tmp/maya-{version}.lock")
     if lock_file.exists():

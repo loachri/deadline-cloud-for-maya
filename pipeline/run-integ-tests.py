@@ -48,11 +48,6 @@ def main():
     # fixture (likely path format or renderer version differences). Needs macOS-specific fixture.
     if system == "Darwin":
         args += ["--ignore=test/integ/test_maya_adaptors.py", "-k", "not Redshift"]
-        # Verify mayapy works before running tests (Maya 2026 macOS binary is broken)
-        check = subprocess.run(["mayapy", "-c", "print('ok')"], capture_output=True, timeout=10)
-        if check.returncode != 0:
-            print(f"WARNING: mayapy for Maya {maya_version} is not functional on macOS, skipping")
-            sys.exit(0)
 
     sys.exit(subprocess.run(args).returncode)
 
