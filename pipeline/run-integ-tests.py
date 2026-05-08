@@ -29,6 +29,8 @@ def main():
         os.environ["MAYA_SCRIPT_PATH"] = rs_scripts + ";" + os.environ.get("MAYA_SCRIPT_PATH", "")
         os.environ["MAYA_RENDER_DESC_PATH"] = rs_desc + ";" + os.environ.get("MAYA_RENDER_DESC_PATH", "")
         os.environ["REDSHIFT_COREDATAPATH"] = rs_root
+        # Redshift's .mll depends on DLLs in its bin directory
+        os.environ["PATH"] = f"{rs_root}\\bin;" + os.environ["PATH"]
 
         # Renderer licensing (Machine-level env vars don't take effect in current session)
         license_dns = os.environ.get("LICENSE_ENDPOINT_DNS", "")
