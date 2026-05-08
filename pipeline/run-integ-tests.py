@@ -42,11 +42,12 @@ def main():
 
     # Linux and macOS use wrapper scripts that handle PATH and renderer paths
 
-    sys.exit(
-        subprocess.run(
-            ["mayapy", "-m", "pytest", "--no-cov", "test/integ", "-vvv", "--numprocesses=1"]
-        ).returncode
-    )
+    args = ["mayapy", "-m", "pytest", "--no-cov", "test/integ", "-vvv", "--numprocesses=1"]
+    # macOS: skip adaptor tests (no SMF rendering support, native extension ABI issues)
+    if system == "Darwin":
+        args += ["--ignore=test/integ/test_maya_adaptors.py"]
+
+    sys.exit(subprocess.run(args).returncode)
 
 
 if __name__ == "__main__":
