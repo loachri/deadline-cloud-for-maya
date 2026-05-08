@@ -883,6 +883,11 @@ def _register_pywin32() -> None:
 def setup_windows(maya_versions: Sequence[str], renderers: Sequence[str]) -> None:
     _clean_stale_locks(maya_versions, "windows")
 
+    # Remove stale mayapy copies from previous runs that break PATH resolution
+    for stale in [Path("C:/Windows/mayapy.exe"), Path("C:/Windows/mayapy.cmd")]:
+        if stale.exists():
+            stale.unlink(missing_ok=True)
+
     # Ensure 7-Zip is available (needed to extract Maya .7z installer)
     seven_zip = Path("C:/Program Files/7-Zip/7z.exe")
     if not seven_zip.exists():
