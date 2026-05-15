@@ -23,6 +23,7 @@ on:
   push:
     branches:
       - 'mainline'
+      - 'feat/integ-test-cicd-v2'
 
 jobs:
   IntegrationTests:
